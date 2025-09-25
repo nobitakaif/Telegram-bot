@@ -1,10 +1,12 @@
 import { Telegraf, Markup} from "telegraf"
 import {PrismaClient} from "./generated/prisma"
-import { Keypair } from "@solana/web3.js"
+import { Keypair, Connection } from "@solana/web3.js"
+import { getBalanceMessage } from "./solana"
 
 const token = process.env.TELEGRAM_BOT
 const client = new  PrismaClient()
 const bot = new Telegraf(token!)
+const connection = new Connection(process.env.RPC_ENDPOINT!)
 
 
 // defaut button, it will appears like button so user can select one of these button
@@ -25,7 +27,8 @@ bot.start(async(ctx )=>{
     // if exist 
     if(user){
         const publicKey = user.publicKey
-        ctx.reply(`Welcome back to nobita bot. Here is your public key ${publicKey}, You can trade on solana now.`,{
+        const {empty, message} =await getBalanceMessage(publicKey)
+        ctx.reply(`Welcome back to nobita bot. Here is your public key ${publicKey}, You can trade on solana now. ${empty ? "Your wallet is empty please fund it to trade on sol" : message}`,{
             ...DEFAULT_BUTTON
         })
     }else{ // if not
@@ -52,14 +55,15 @@ bot.start(async(ctx )=>{
 
 bot.action("public_key", async(ctx)=>{
     // get the public key from the db
-    console.log(ctx.chat?.id)
+    // console.log(ctx.chat?.id)
     const user = await client.user.findFirst({
         where:{
             tgUserId : ctx.chat?.id.toString()
         }
     })
-    console.log({user})
-    ctx.reply(`This is your public key ${user?.publicKey}`)
+    // console.log({user})
+    const { empty, message } = await getBalanceMessage(user?.publicKey!)
+    ctx.reply(`This is your public key ${user?.publicKey}. ${empty ? "Fund your wallet to trade" : message}`)
     return 
 })
 
