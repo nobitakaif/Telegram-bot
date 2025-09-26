@@ -1,18 +1,25 @@
 import { Telegraf, Markup} from "telegraf"
 import {PrismaClient} from "./generated/prisma"
-import { Keypair, Connection } from "@solana/web3.js"
+import { Keypair, Connection, LAMPORTS_PER_SOL } from "@solana/web3.js"
 import { getBalanceMessage } from "./solana"
+import { swap } from "./jup"
 
 const token = process.env.TELEGRAM_BOT
 const client = new  PrismaClient()
 const bot = new Telegraf(token!)
 const connection = new Connection(process.env.RPC_ENDPOINT!)
 
+const PENDING_USER_BUY :Record<string,{
+    isPending : boolean,
+    mint? : string
+}> = {}
 
 // defaut button, it will appears like button so user can select one of these button
 const DEFAULT_BUTTON = Markup.inlineKeyboard([
-    Markup.button.callback("Show public key","public_key"), // first agrs appears on the ui second one is key(what will happen when button is clicked)
-    Markup.button.callback("Show private key","private_key")
+// first agrs appears on the ui second one is key(what will happen when button is clicked)
+    Markup.button.callback("Show public key","public_key"), 
+    Markup.button.callback("Show private key","private_key"),
+    Markup.button.callback("Buy",'buy')
 ])
 bot.start(async(ctx )=>{
 
@@ -74,6 +81,33 @@ bot.action("private_key",async(ctx)=>{
         }
     })
     ctx.reply(`This is your private key ${user?.privateKey}`)
+})
+
+
+bot.action("buy",async (ctx)=>{
+    
+    PENDING_USER_BUY[ctx.chat?.id!]={
+        isPending : true
+    }
+    ctx.reply("what token mint do you want to buy")
+})
+
+bot.on('text', async(ctx)=>{
+    const msg = ctx.message.text
+    const user = await client.user.findFirst({
+        where:{
+            tgUserId : ctx.chat.id.toString()
+        }
+    })
+    if(PENDING_USER_BUY[ctx.chat.id].isPending && !PENDING_USER_BUY[ctx.chat.id].mint){
+        PENDING_USER_BUY[ctx.chat.id].mint = msg;
+        ctx.reply("what quantity do you want to buy? ")
+    }else if(PENDING_USER_BUY[ctx.chat.id].isPending && PENDING_USER_BUY[ctx.chat.id].mint){
+        const amount = msg
+        const swapTxn = await swap("So11111111111111111111111111111111111111112", PENDING_USER_BUY[ctx.chat.id].mint!, Number(msg)*LAMPORTS_PER_SOL, user?.publicKey!)
+        delete PENDING_USER_BUY[ctx.chat.id]
+        ctx.reply(`swap successfull, you can track it here https://solscan.io/txn/${swapTxn}`)
+    }
 })
 
 bot.launch()
